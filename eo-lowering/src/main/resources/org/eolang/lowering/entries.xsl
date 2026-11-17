@@ -29,7 +29,7 @@
   formation is going to dispatch on its inputs. So a number arrives as the
   formation of "number" with the symbol where its bytes would be, and every
   attribute the body takes off it dispatches exactly as it would on a literal.
-  What a void holds is read off the tables of "eo:inference" and worked out
+  What a void holds is read off the tables of "eo:infer" and worked out
   nowhere here. The "holds" of the void in "facts.xml" is the annotation of
   the source, true of every caller there will ever be, and it answers first.
   Otherwise the row of the place of the void in "answers.xml" says what the
@@ -95,7 +95,7 @@
   -->
   <xsl:output encoding="UTF-8" method="xml"/>
   <!--
-  The directory with the tables of "eo:inference", as a URI. The stage that
+  The directory with the tables of "eo:infer", as a URI. The stage that
   runs this stylesheet has made sure "facts.xml" and "answers.xml" are
   there, so the tables are opened and never asked about.
   -->
@@ -239,7 +239,7 @@
   <!-- The answer of a row, as the library shapes the carrier it is wrapped in: a fresh symbol where the bytes of a literal would be. -->
   <xsl:function name="eo:shape" as="xs:string">
     <xsl:param name="carrier" as="xs:string"/>
-    <xsl:sequence select="map {'number': 'Φ.number( φ ↦ Φ.bytes( φ ↦ ⟦ λ ⤍ 𝜎 ⟧ ) )', 'string': 'Φ.string( φ ↦ Φ.bytes( φ ↦ ⟦ λ ⤍ 𝜎 ⟧ ) )', 'bytes': 'Φ.bytes( φ ↦ ⟦ λ ⤍ 𝜎 ⟧ )', 'bool': '⟦ φ ↦ Φ.bool( v🌵fork ↦ ⟦ λ ⤍ L_fork, left ↦ ∅, right ↦ ∅, on🌵 ↦ ⟦ λ ⤍ 𝜎 ⟧, left🌵 ↦ ξ.left, right🌵 ↦ ξ.right ⟧ ) ⟧'}($carrier)"/>
+    <xsl:sequence select="map {'number': 'Φ.number( φ ↦ Φ.bytes( φ ↦ ⟦ λ ⤍ 𝜎 ⟧ ) )', 'string': 'Φ.string( φ ↦ Φ.bytes( φ ↦ ⟦ λ ⤍ 𝜎 ⟧ ) )', 'bytes': 'Φ.bytes( φ ↦ ⟦ λ ⤍ 𝜎 ⟧ )', 'bool': '⟦ φ ↦ Φ.bool( v🌵fork ↦ ⟦ λ ⤍ L_fork, v🌵left ↦ ∅, v🌵right ↦ ∅, on🌵 ↦ ⟦ λ ⤍ 𝜎 ⟧, left🌵 ↦ ξ.v🌵left, right🌵 ↦ ξ.v🌵right ⟧ ) ⟧'}($carrier)"/>
   </xsl:function>
   <!--
   The plan for one void: what is planted in it and which symbols that
@@ -456,15 +456,15 @@
       </xsl:if>
       <o as="v🌵fork">
         <o name="λ">L_fork</o>
-        <o base="∅" name="left"/>
-        <o base="∅" name="right"/>
+        <o base="∅" name="v🌵left"/>
+        <o base="∅" name="v🌵right"/>
         <o name="on🌵">
           <o name="λ">
             <xsl:value-of select="concat('𝜎', index-of($eo:symbols, generate-id(sym[1])))"/>
           </o>
         </o>
-        <o base="ξ.left" name="left🌵"/>
-        <o base="ξ.right" name="right🌵"/>
+        <o base="ξ.v🌵left" name="left🌵"/>
+        <o base="ξ.v🌵right" name="right🌵"/>
       </o>
     </o>
   </xsl:template>

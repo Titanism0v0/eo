@@ -4,9 +4,13 @@
  */
 package org.eolang.lowering;
 
+import com.jcabi.xml.XMLDocument;
+import com.jcabi.xml.XSLDocument;
 import com.yegor256.Mktmp;
 import com.yegor256.MktmpResolver;
 import java.io.IOException;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.tools.ToolProvider;
 import org.apache.log4j.AppenderSkeleton;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
@@ -35,9 +40,11 @@ import org.hamcrest.MatcherAssert;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.parallel.Isolated;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Tests of the class {@link Rendering}.
@@ -64,6 +71,52 @@ final class RenderingTest {
             new RenderingTest.Pack(new XtSticky(new XtYaml(yaml)), this.dir).unmet(),
             Matchers.empty()
         );
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1, 255, 256, 257, 1023, 1024, 1025, 4696, 10_000, 65_536})
+    void preservesTheBytesOfACompiledLiteral(final int size) throws Exception {
+        final byte[] expected = new byte[size];
+        for (int idx = 0; idx < size; ++idx) {
+            expected[idx] = (byte) idx;
+        }
+        final StringBuilder bytes = new StringBuilder();
+        for (final byte value : expected) {
+            bytes.append(String.format("%02X-", value));
+        }
+        if (size == 0) {
+            bytes.append("--");
+        }
+        final String expression = new XSLDocument(
+            String.join(
+                "", "<xsl:stylesheet xmlns:xsl=\"http://www.w3.org/1999/XSL/Transform\" ",
+                "xmlns:eo=\"https://www.eolang.org\" version=\"3.0\">",
+                "<xsl:import href=\"/org/eolang/lowering/rendering.xsl\"/>",
+                "<xsl:param name=\"bytes\"/>",
+                "<xsl:template match=\"/\"><literal>",
+                "<xsl:value-of select=\"eo:literal-of($bytes, 'byte[]')\"/>",
+                "</literal></xsl:template></xsl:stylesheet>"
+            )
+        ).with(new Hrefs()).with("bytes", bytes.toString())
+            .transform(new XMLDocument("<input/>"))
+            .xpath("/literal/text()").get(0);
+        final Path output = Files.createTempDirectory(this.dir, "literal-");
+        final Path source = output.resolve("Literal.java");
+        Files.writeString(
+            source,
+            String.format(
+                "public final class Literal { public static byte[] bytes() { return %s; } }",
+                expression
+            ),
+            StandardCharsets.UTF_8
+        );
+        RenderingTest.compile(source);
+        try (URLClassLoader loader = new URLClassLoader(new URL[]{output.toUri().toURL()})) {
+            Assertions.assertArrayEquals(
+                expected, (byte[]) loader.loadClass("Literal").getMethod("bytes").invoke(null),
+                "the compiled literal must preserve every byte"
+            );
+        }
     }
 
     @Test
@@ -143,6 +196,49 @@ final class RenderingTest {
             "two entries whose atoms ask for one class must both be taints, but some were rendered",
             Files.readString(temp.resolve("rendered.tsv"), StandardCharsets.UTF_8),
             Matchers.emptyString()
+        );
+    }
+
+    @Test
+    @Timeout(value = 20L, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void rendersAnEntryWithManyAliasedMetasInTime(@Mktmp final Path temp) throws IOException {
+        final int count = new SecureRandom().nextInt(500) + 2000;
+        final StringBuilder records = new StringBuilder();
+        final StringBuilder binds = new StringBuilder();
+        for (int idx = 1; idx <= count; ++idx) {
+            records.append(
+                String.format(
+                    "<applied meta=\"𝑒·0·%1$d\" of=\"Φ.bytes\"><symbol attr=\"φ\">𝜎1</symbol></applied><morphed meta=\"𝑛·%1$d·1\">𝑒·0·%1$d</morphed><answered meta=\"𝑛·%1$d·2\">𝑛·%1$d·1</answered><bound meta=\"𝛿%1$d·1\">𝑛·%1$d·2</bound>",
+                    idx
+                )
+            );
+            binds.append(String.format("<meta attr=\"a%1$d\">𝛿%1$d·1</meta>", idx));
+        }
+        Files.write(
+            temp.resolve("entries.tsv"),
+            String.format("4\tΦ.mix%n").getBytes(StandardCharsets.UTF_8)
+        );
+        Files.write(
+            temp.resolve("voids.tsv"),
+            String.format("𝜎1\t4\tv🌵b\tbytes%n").getBytes(StandardCharsets.UTF_8)
+        );
+        final Path tables = RenderingTest.planted(
+            temp, "mix", String.format("[b] > mix%n  T b > @%n")
+        );
+        final Path protocol = temp.resolve("2-protocols").resolve(new Locator("Φ.mix").protocol());
+        Files.createDirectories(protocol.getParent());
+        Files.write(
+            protocol,
+            String.format(
+                "<protocol><dataize at=\"Φ.l🌵.e4\"><boxed meta=\"𝑛·0·1\">Φ.l🌵.e4.φ</boxed><morph at=\"𝑛·0·1\">%s<applied meta=\"𝑛·0·2\" of=\"Φ.tuple\">%s</applied><applied meta=\"𝑛·0·3\" of=\"Φ.l🌵.throw\"><meta attr=\"message\">𝑛·0·2</meta></applied><morphed meta=\"𝑛·0·4\">𝑛·0·3</morphed></morph><unanswered λ=\"L_throw\" by=\"dataize\">𝑛·0·3</unanswered><stuck λ=\"L_throw\"/></dataize></protocol>",
+                records, binds
+            ).getBytes(StandardCharsets.UTF_8)
+        );
+        new Rendering(tables).exec(temp);
+        MatcherAssert.assertThat(
+            "an entry that throws a message of many aliased metas must not stay in EO, but it did",
+            Files.readString(temp.resolve("rendered.tsv"), StandardCharsets.UTF_8),
+            Matchers.equalTo(String.format("4\tΦ.mix%n"))
         );
     }
 
@@ -250,6 +346,19 @@ final class RenderingTest {
         );
     }
 
+    private static void compile(final Path source) {
+        Assertions.assertNotNull(
+            ToolProvider.getSystemJavaCompiler(), "a JDK compiler is required"
+        );
+        Assertions.assertEquals(
+            0,
+            ToolProvider.getSystemJavaCompiler().run(
+                null, null, null, "--release", "17", "-encoding", "UTF-8", source.toString()
+            ),
+            source.toString()
+        );
+    }
+
     private static Path planted(final Path temp, final String name, final String program)
         throws IOException {
         Files.write(
@@ -312,7 +421,7 @@ final class RenderingTest {
      *
      * <p>The file has EO sources, one entry, its protocol, and the whole
      * text of the Java atom of that entry, which the rendering must write
-     * exactly. The tables of {@code eo:inference} are what the engine writes
+     * exactly. The tables of {@code eo:infer} are what the engine writes
      * for the sources, unless the keys {@code facts} and {@code answers}
      * hold them, see {@link Tables}. So the sources hold what the engine
      * needs to tell what the body gives, the atoms it calls and a caller
